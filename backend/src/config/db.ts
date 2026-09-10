@@ -1,0 +1,55 @@
+import { Pool, QueryResultRow, types } from 'pg';
+import { config } from './env';
+
+// Keep PostgreSQL DATE fields as 'YYYY-MM-DD' strings to prevent timezone shifts
+types.setTypeParser(1082, (val) => val);
+
+const isRemote = config.db.connectionString?.includes('supabase.co') || config.db.connectionString?.includes('pooler.supabase.com');
+
+export const pool = new Pool(
+  config.db.connectionString
+    ? {
+        connectionString: config.db.connectionString,
+        ssl: isRemote ? { rejectUnauthorized: false } : undefined,
+      }
+    : {
+        host: config.db.host,
+        port: config.db.port,
+        database: config.db.database,
+        user: config.db.user,
+        password: config.db.password,
+      }
+);
+
+export async function query<T extends QueryResultRow = QueryResultRow>(
+  text: string,
+  params?: unknown[]
+): Promise<T[]> {
+  const result = await pool.query<T>(text, params);
+  return result.rows;
+}
+
+export async function queryOne<T extends QueryResultRow = QueryResultRow>(
+  text: string,
+  params?: unknown[]
+): Promise<T | null> {
+  const rows = await query<T>(text, params);
+  return rows[0] ?? null;
+}
+
+export async function withTransaction<T>(
+  fn: (client: import('pg').PoolClient) => Promise<T>
+): Promise<T> {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await fn(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}

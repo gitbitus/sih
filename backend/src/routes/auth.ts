@@ -117,7 +117,7 @@ router.post('/refresh', async (req, res, next) => {
 
 const forgotSchema = z.object({
   email: z.string().email(),
-  role: z.enum(['head_admin', 'admin', 'sub_admin', 'merchant']),
+  role: z.enum(['admin', 'sub_admin', 'merchant']),
 });
 
 router.post('/forgot-password', validate(forgotSchema), async (req, res, next) => {
@@ -184,6 +184,10 @@ router.post('/change-password', authenticate, validate(changePasswordSchema), as
   try {
     const { currentPassword, newPassword } = req.body as z.infer<typeof changePasswordSchema>;
     const user = req.user!;
+    if (user.role === 'head_admin') {
+      res.status(403).json({ error: 'Head Administrator password cannot be changed via the application interface.' });
+      return;
+    }
     const dbUser = await getUserByEmail(user.email, user.role);
     if (!dbUser) { res.status(404).json({ error: 'User not found' }); return; }
 

@@ -6,7 +6,7 @@ import { Mail, ArrowLeft, KeyRound, CheckCircle2 } from 'lucide-react';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState<'merchant' | 'admin' | 'sub_admin' | 'head_admin'>('merchant');
+  const [role, setRole] = useState<'merchant' | 'admin' | 'sub_admin'>('merchant');
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -75,7 +75,6 @@ export default function ForgotPasswordPage() {
                   <option value="merchant">Merchant</option>
                   <option value="admin">Regional Administrator</option>
                   <option value="sub_admin">Inspector / Sub-Admin</option>
-                  <option value="head_admin">Head Administrator</option>
                 </select>
               </div>
 

@@ -20,8 +20,18 @@ import verifyRouter from './routes/verify';
 const app = express();
 export default app;
 
-app.use(helmet());
-app.use(cors({ origin: config.corsOrigin.split(','), credentials: true }));
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps, curl, postman) or any vercel.app / localhost domain
+    if (!origin || config.corsOrigin === '*' || origin.includes('vercel.app') || origin.includes('localhost')) {
+      callback(null, true);
+    } else {
+      const allowed = config.corsOrigin.split(',').map(s => s.trim());
+      callback(null, allowed.includes(origin));
+    }
+  },
+  credentials: true,
+}));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(pinoHttp());

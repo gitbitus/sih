@@ -42,7 +42,10 @@ export const config = {
     senderId: process.env.SMS_SENDER_ID || 'MIVC',
   },
   qr: {
-    verifyBaseUrl: process.env.PUBLIC_VERIFY_BASE_URL || 'http://localhost:5173/verify',
+    verifyBaseUrl:
+      process.env.PUBLIC_VERIFY_BASE_URL && !process.env.PUBLIC_VERIFY_BASE_URL.includes('localhost')
+        ? process.env.PUBLIC_VERIFY_BASE_URL
+        : 'https://sih-ten-omega.vercel.app/verify',
     certificateValidityDays: parseInt(process.env.CERTIFICATE_VALIDITY_DAYS || '365', 10),
   },
   scheduling: {

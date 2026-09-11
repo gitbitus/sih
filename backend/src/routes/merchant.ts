@@ -427,14 +427,13 @@ router.get('/certificates/:id/download', authenticate, requireRole('merchant'), 
       [req.params.id]
     );
     if (!cert || cert.merchant_id !== req.user!.id) { res.status(404).json({ error: 'Certificate not found' }); return; }
-    if (!cert.pdf_path) { res.status(404).json({ error: 'PDF not available' }); return; }
 
-    const absPath = getFilePath(cert.pdf_path);
-    if (!fs.existsSync(absPath)) { res.status(404).json({ error: 'PDF file not found' }); return; }
+    const { regenerateCertificatePDF } = await import('../services/certificateService');
+    const pdfBuffer = await regenerateCertificatePDF(cert.id);
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${cert.certificate_number}.pdf"`);
-    fs.createReadStream(absPath).pipe(res);
+    res.send(pdfBuffer);
   } catch (err) { next(err); }
 });
 

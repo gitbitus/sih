@@ -17,7 +17,8 @@ import {
   PackageCheck,
   Building2,
   Phone,
-  CreditCard
+  CreditCard,
+  Truck
 } from 'lucide-react';
 import { formatDate } from '../../lib/utils';
 
@@ -231,6 +232,52 @@ export default function ApplicationDetailPage() {
           )}
         </div>
       </div>
+
+      {/* MERCHANT DELIVERY CONFIRMATION TOKEN CARD */}
+      {isHandedOver && (
+        <div className={`rounded-2xl p-6 shadow-md border flex flex-col sm:flex-row justify-between sm:items-center gap-5 transition ${
+          visit?.delivery_otp_verified || request.returned_at
+            ? 'bg-emerald-50 border-emerald-300'
+            : 'bg-gradient-to-r from-amber-500 to-orange-600 text-white border-amber-600'
+        }`}>
+          <div>
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider mb-2 bg-black/20 text-white">
+              <Truck className="w-3.5 h-3.5" />
+              Machine Return Verification
+            </div>
+            <h3 className={`text-base font-bold ${visit?.delivery_otp_verified || request.returned_at ? 'text-slate-900' : 'text-white'}`}>
+              Your Machine Delivery Confirmation Code
+            </h3>
+            <p className={`text-xs mt-1 max-w-xl leading-relaxed ${visit?.delivery_otp_verified || request.returned_at ? 'text-slate-600' : 'text-amber-100'}`}>
+              {visit?.delivery_otp_verified || request.returned_at ? (
+                <>
+                  You have physically received your verified instrument back on <strong>{formatDate(request.returned_at || visit?.returned_at || visit?.updated_at)}</strong>. Custody cycle complete.
+                </>
+              ) : (
+                <>
+                  The inspector will deliver your tested machine back to your shop. Inspect your machine first! Only after you have physically received your machine in your hands, share this 6-digit confirmation code with the officer to confirm delivery.
+                </>
+              )}
+            </p>
+          </div>
+
+          <div className={`px-6 py-3 rounded-2xl text-center flex-shrink-0 border ${
+            visit?.delivery_otp_verified || request.returned_at
+              ? 'bg-emerald-100 border-emerald-300 text-emerald-900'
+              : 'bg-white/20 backdrop-blur border-white/30 text-white'
+          }`}>
+            <span className="text-[10px] uppercase font-bold tracking-widest block opacity-80">
+              Your Delivery Code
+            </span>
+            <span className="font-mono text-3xl font-extrabold tracking-widest">
+              {visit?.delivery_otp_code || '------'}
+            </span>
+            <div className="text-[11px] mt-1 font-semibold opacity-90">
+              {visit?.delivery_otp_verified || request.returned_at ? '✓ Delivery Confirmed' : 'Share with officer upon receipt'}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Equipment & Schedule Summary Card */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-4">

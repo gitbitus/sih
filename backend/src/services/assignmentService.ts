@@ -110,15 +110,16 @@ export async function autoAssignVerificationRequest(requestId: string): Promise<
   const scheduledDateObj = new Date(assignedDate);
   const estimatedReturnDate = addBusinessDays(scheduledDateObj, 3);
 
-  // Generate 6-digit officer verification token
+  // Generate 6-digit officer verification token (pickup) & merchant delivery confirmation token (return)
   const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+  const deliveryOtpCode = Math.floor(100000 + Math.random() * 900000).toString();
 
   // Create scheduled visit
   const [visit] = await query<{ id: string }>(
-    `INSERT INTO visits (id, request_id, sub_admin_id, scheduled_date, return_date, status, otp_code, otp_verified)
-     VALUES (uuid_generate_v4(), $1, $2, $3, $4, 'scheduled', $5, false)
+    `INSERT INTO visits (id, request_id, sub_admin_id, scheduled_date, return_date, status, otp_code, otp_verified, delivery_otp_code, delivery_otp_verified)
+     VALUES (uuid_generate_v4(), $1, $2, $3, $4, 'scheduled', $5, false, $6, false)
      RETURNING id`,
-    [requestId, selectedOfficer.id, assignedDate, estimatedReturnDate, otpCode]
+    [requestId, selectedOfficer.id, assignedDate, estimatedReturnDate, otpCode, deliveryOtpCode]
   );
 
   // Update verification request

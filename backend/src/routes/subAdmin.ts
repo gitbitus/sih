@@ -77,7 +77,8 @@ router.get('/visits/:id', authenticate, requireRole('sub_admin'), requirePasswor
   try {
     const visit = await queryOne(
       `SELECT v.id, v.request_id, v.sub_admin_id, v.admin_id, v.scheduled_date, v.return_date,
-              v.status, v.otp_code, v.otp_verified, v.collected_at, v.notes, v.created_at, v.updated_at,
+              v.status, v.otp_code, v.otp_verified, v.delivery_otp_verified, v.collected_at, v.returned_at,
+              v.notes, v.created_at, v.updated_at,
               r.make, r.model, r.serial_number, r.year_of_manufacture, r.last_calibration_date,
               r.operating_address_street, r.operating_address_city, r.operating_address_state, r.operating_address_pin,
               m.business_name, m.owner_name, m.phone AS merchant_phone, m.email AS merchant_email,
@@ -102,18 +103,26 @@ router.get('/visits/:id', authenticate, requireRole('sub_admin'), requirePasswor
   } catch (err) { next(err); }
 });
 
-// POST /sub-admin/visits/:id/verify-otp
+// POST /sub-admin/visits/:id/confirm-return
+// The officer enters the merchant's 6-digit Delivery OTP upon handing back the machine
 router.post(
-  '/visits/:id/verify-otp',
+  '/visits/:id/confirm-return',
   authenticate, requireRole('sub_admin'), requirePasswordChanged,
-  validate(z.object({ otp: z.string().length(6, 'OTP must be 6 digits') })),
+  validate(z.object({ deliveryOtp: z.string().length(6, 'Delivery Confirmation OTP must be 6 digits') })),
   async (req, res, next) => {
     try {
-      const { otp } = req.body;
+      const { deliveryOtp } = req.body;
       const subAdminId = req.user!.id;
 
-      const visit = await queryOne<{ id: string; otp_code: string; otp_verified: boolean; status: string }>(
-        `SELECT id, otp_code, otp_verified, status FROM visits WHERE id = $1 AND sub_admin_id = $2`,
+      const visit = await queryOne<{
+        id: string;
+        request_id: string;
+        delivery_otp_code: string;
+        delivery_otp_verified: boolean;
+        status: string;
+      }>(
+        `SELECT id, request_id, delivery_otp_code, delivery_otp_verified, status
+         FROM visits WHERE id = $1 AND sub_admin_id = $2`,
         [req.params.id, subAdminId]
       );
 
@@ -122,25 +131,37 @@ router.post(
         return;
       }
 
-      if (visit.otp_verified) {
-        res.json({ message: 'OTP already verified', verified: true });
+      if (visit.delivery_otp_verified) {
+        res.json({ message: 'Delivery already verified and confirmed by merchant.', verified: true });
         return;
       }
 
-      if (visit.otp_code !== otp.trim()) {
-        res.status(400).json({ error: 'Invalid merchant verification OTP. Please ask the merchant for the 6-digit code shown on their dashboard.' });
+      if (visit.delivery_otp_code !== deliveryOtp.trim()) {
+        res.status(400).json({ error: 'Invalid Delivery Confirmation OTP. Please ask the merchant for the 6-digit confirmation code shown on their portal after handing over the machine.' });
         return;
       }
 
-      await query(`UPDATE visits SET otp_verified = true, collected_at = NOW(), updated_at = NOW() WHERE id = $1`, [req.params.id]);
-      await query(`UPDATE verification_requests SET collected_at = NOW(), updated_at = NOW() WHERE id = (SELECT request_id FROM visits WHERE id = $1)`, [req.params.id]);
+      await query(
+        `UPDATE visits SET delivery_otp_verified = true, returned_at = NOW(), status = 'completed', updated_at = NOW() WHERE id = $1`,
+        [req.params.id]
+      );
+      await query(
+        `UPDATE verification_requests SET returned_at = NOW(), updated_at = NOW() WHERE id = $1`,
+        [visit.request_id]
+      );
 
       await logAction({
-        actorId: subAdminId, actorRole: 'sub_admin',
-        action: 'INSPECTION_OTP_VERIFIED', entityType: 'visit', entityId: req.params.id as string,
+        actorId: subAdminId,
+        actorRole: 'sub_admin',
+        action: 'EQUIPMENT_RETURN_CONFIRMED',
+        entityType: 'visit',
+        entityId: req.params.id as string,
       });
 
-      res.json({ message: 'Merchant on-site identity verified and instrument collected successfully!', verified: true });
+      res.json({
+        message: 'Equipment return and physical delivery confirmed by merchant successfully!',
+        verified: true,
+      });
     } catch (err) { next(err); }
   }
 );

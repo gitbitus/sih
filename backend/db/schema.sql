@@ -143,6 +143,9 @@ CREATE TABLE visits (
     status visit_status DEFAULT 'scheduled',
     otp_code VARCHAR(6),
     otp_verified BOOL DEFAULT false,
+    delivery_otp_code VARCHAR(6),
+    delivery_otp_verified BOOL DEFAULT false,
+    returned_at TIMESTAMPTZ,
     notes TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()

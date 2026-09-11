@@ -30,8 +30,8 @@ export default function SubAdminDashboard() {
     try {
       const res = await api.get('/sub-admin/visits');
       setVisits(res.data.data || []);
-    } catch (err) {
-      toast.error('Failed to load assigned visits');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || 'Failed to load assigned visits');
     } finally {
       setLoading(false);
     }
@@ -165,7 +165,13 @@ export default function SubAdminDashboard() {
                   </div>
                 </div>
 
-                <div>
+                <div className="flex items-center gap-3">
+                  {v.otp_code && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-xl px-3 py-1.5 text-center">
+                      <span className="text-[10px] uppercase font-bold text-blue-600 block">Officer Token</span>
+                      <span className="font-mono font-bold text-blue-900 text-sm tracking-wider">{v.otp_code}</span>
+                    </div>
+                  )}
                   <Link
                     to={`/sub-admin/visits/${v.id}`}
                     className="inline-flex items-center gap-2 py-2.5 px-5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm shadow-md transition"

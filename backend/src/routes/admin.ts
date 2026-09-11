@@ -8,6 +8,7 @@ import { createNotification, sendEmail } from '../services/notificationService';
 import { logAction } from '../services/auditService';
 import { hashPassword } from '../services/authService';
 import { config } from '../config/env';
+import { reallocateSubAdminVisits } from '../services/assignmentService';
 import crypto from 'crypto';
 
 const router = Router();
@@ -337,6 +338,57 @@ router.patch('/sub-admins/:id/disable', async (req, res, next) => {
     if (!newStatus) await revokeAllUserTokens(req.params.id, 'sub_admin');
     await logAction({ actorId: req.user!.id, actorRole: req.user!.role, action: newStatus ? 'SUB_ADMIN_ENABLED' : 'SUB_ADMIN_DISABLED', entityType: 'sub_admin', entityId: req.params.id });
     res.json({ message: `Sub-admin ${newStatus ? 'enabled' : 'disabled'}`, isActive: newStatus });
+  } catch (err) { next(err); }
+});
+
+router.post('/sub-admins/:id/leave', validate(z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD'),
+  reason: z.string().optional(),
+})), async (req, res, next) => {
+  try {
+    const subAdminId = String(req.params.id);
+    const { date, reason } = req.body;
+
+    // Upsert leave record in sub_admin_availability
+    await query(
+      `INSERT INTO sub_admin_availability (id, sub_admin_id, date, is_available, reason, created_at)
+       VALUES (uuid_generate_v4(), $1, $2, false, $3, NOW())
+       ON CONFLICT (sub_admin_id, date) DO UPDATE SET is_available = false, reason = $3`,
+      [subAdminId, date, reason || 'Admin granted leave']
+    );
+
+    // Reallocate visits scheduled on that date
+    const reallocation = await reallocateSubAdminVisits(subAdminId, date, String(req.user!.id));
+
+    res.json({
+      message: `Sub-admin marked on leave for ${date}. ${reallocation.reallocatedCount} visit(s) reallocated automatically.`,
+      ...reallocation,
+    });
+  } catch (err) { next(err); }
+});
+
+router.get('/sub-admins/:id/schedule', async (req, res, next) => {
+  try {
+    const subAdminId = String(req.params.id);
+    const visits = await query(
+      `SELECT v.*, r.operating_address_city, m.business_name, m.owner_name, it.name AS instrument_type_name
+       FROM visits v
+       JOIN verification_requests r ON r.id = v.request_id
+       JOIN merchants m ON m.id = r.merchant_id
+       JOIN instrument_types it ON it.id = r.instrument_type_id
+       WHERE v.sub_admin_id = $1 AND v.status = 'scheduled'
+       ORDER BY v.scheduled_date ASC`,
+      [subAdminId]
+    );
+
+    const leaves = await query(
+      `SELECT * FROM sub_admin_availability
+       WHERE sub_admin_id = $1 AND is_available = false AND date >= CURRENT_DATE
+       ORDER BY date ASC`,
+      [subAdminId]
+    );
+
+    res.json({ visits, leaves });
   } catch (err) { next(err); }
 });
 

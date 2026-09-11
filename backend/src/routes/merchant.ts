@@ -10,6 +10,7 @@ import { logAction } from '../services/auditService';
 import { uploadFields, uploadMultiple } from '../middleware/upload';
 import { saveFile, getFilePath } from '../services/storageService';
 import { config } from '../config/env';
+import { autoAssignVerificationRequest } from '../services/assignmentService';
 import path from 'path';
 import fs from 'fs';
 
@@ -149,6 +150,9 @@ const applicationSchema = z.object({
     startDate: z.string().optional(),
     endDate: z.string().optional(),
   }).optional(),
+  feeAmount: z.coerce.number().optional(),
+  feePaid: z.coerce.boolean().optional(),
+  paymentReference: z.string().optional(),
   declarationAccepted: z.coerce.boolean(),
 });
 
@@ -176,8 +180,9 @@ router.post('/applications',
       const city = data.operatingAddressCityName || data.operatingAddress?.city || 'N/A';
       const state = data.operatingAddressState || data.operatingAddress?.state || 'N/A';
       const pin = data.operatingAddressPin || data.operatingAddress?.pin || 'N/A';
-      const startDate = data.preferredInspectionStart || data.preferredInspectionWindow?.startDate || null;
-      const endDate = data.preferredInspectionEnd || data.preferredInspectionWindow?.endDate || null;
+      const feeAmount = data.feeAmount || 500.00;
+      const feePaid = data.feePaid !== false;
+      const paymentRef = data.paymentReference || `TXN-${Date.now().toString(36).toUpperCase()}`;
 
       const [request] = await query<{ id: string }>(
         `INSERT INTO verification_requests (
@@ -185,20 +190,20 @@ router.post('/applications',
            year_of_manufacture, last_calibration_date,
            operating_address_street, operating_address_city, operating_address_state, operating_address_pin,
            operating_address_lat, operating_address_lng,
-           business_reg_number, preferred_inspection_start, preferred_inspection_end, status
+           business_reg_number, fee_amount, fee_paid, payment_reference, status
          ) VALUES (
            uuid_generate_v4(), $1, $2, $3, $4, $5,
            $6, $7,
            $8, $9, $10, $11,
            $12, $13,
-           $14, $15, $16, 'submitted'
+           $14, $15, $16, $17, 'submitted'
          ) RETURNING id`,
         [
           merchantId, data.instrumentTypeId, data.make ?? null, data.model ?? null, data.serialNumber ?? null,
           data.yearOfManufacture ?? null, data.lastCalibrationDate || null,
           street, city, state, pin,
           data.operatingAddressLat ?? null, data.operatingAddressLng ?? null,
-          data.businessRegNumber || null, startDate, endDate,
+          data.businessRegNumber || null, feeAmount, feePaid, paymentRef,
         ]
       );
 
@@ -236,8 +241,8 @@ router.post('/applications',
       }
 
       await createNotification(merchantId, 'merchant', 'general',
-        'Application Submitted',
-        `Your verification application (ID: ${request.id.substring(0, 8)}) has been submitted.`,
+        'Application & Fee Received',
+        `Your verification application (ID: ${request.id.substring(0, 8)}) and fee of ₹${feeAmount} have been confirmed.`,
         'request', request.id
       );
 
@@ -246,7 +251,17 @@ router.post('/applications',
         action: 'APPLICATION_SUBMITTED', entityType: 'verification_request', entityId: request.id,
       });
 
-      res.status(201).json({ requestId: request.id, message: 'Application submitted successfully' });
+      // Automatically assign Sub-Admin and schedule collection date
+      const assignResult = await autoAssignVerificationRequest(request.id);
+
+      res.status(201).json({
+        requestId: request.id,
+        scheduledDate: assignResult.scheduledDate,
+        estimatedReturnDate: assignResult.estimatedReturnDate,
+        subAdminName: assignResult.subAdminName,
+        paymentReference: paymentRef,
+        message: 'Application submitted & equipment collection scheduled automatically!',
+      });
     } catch (err) { next(err); }
   }
 );
@@ -292,7 +307,11 @@ router.get('/applications/:id', authenticate, requireRole('merchant'), async (re
 
     const documents = await query(`SELECT * FROM request_documents WHERE request_id = $1`, [req.params.id]);
     const visit = await queryOne(
-      `SELECT v.*, sa.full_name AS sub_admin_name FROM visits v LEFT JOIN sub_admins sa ON sa.id = v.sub_admin_id WHERE v.request_id = $1 ORDER BY v.created_at DESC LIMIT 1`,
+      `SELECT v.*, sa.full_name AS sub_admin_name, sa.phone AS sub_admin_phone, sa.email AS sub_admin_email, sa.employee_id AS sub_admin_employee_id
+       FROM visits v
+       LEFT JOIN sub_admins sa ON sa.id = v.sub_admin_id
+       WHERE v.request_id = $1
+       ORDER BY v.created_at DESC LIMIT 1`,
       [req.params.id]
     );
     const certificate = await queryOne(`SELECT * FROM certificates WHERE request_id = $1`, [req.params.id]);
@@ -300,6 +319,89 @@ router.get('/applications/:id', authenticate, requireRole('merchant'), async (re
     res.json({ request, ...request, documents, visit, certificate });
   } catch (err) { next(err); }
 });
+
+// POST /merchants/applications/:id/verify-handover-otp (Reverse OTP handshake)
+router.post('/applications/:id/verify-handover-otp',
+  authenticate, requireRole('merchant'),
+  validate(z.object({ otp: z.string().length(6, 'Verification code must be 6 digits') })),
+  async (req, res, next) => {
+    try {
+      const { otp } = req.body;
+      const merchantId = req.user!.id;
+
+      const visit = await queryOne<{
+        id: string;
+        request_id: string;
+        sub_admin_id: string;
+        otp_code: string;
+        otp_verified: boolean;
+        sub_admin_name: string;
+      }>(
+        `SELECT v.id, v.request_id, v.sub_admin_id, v.otp_code, v.otp_verified,
+                sa.full_name AS sub_admin_name
+         FROM visits v
+         JOIN verification_requests r ON r.id = v.request_id
+         LEFT JOIN sub_admins sa ON sa.id = v.sub_admin_id
+         WHERE r.id = $1 AND r.merchant_id = $2
+         ORDER BY v.created_at DESC LIMIT 1`,
+        [req.params.id, merchantId]
+      );
+
+      if (!visit) {
+        res.status(404).json({ error: 'Scheduled visit not found for this application' });
+        return;
+      }
+
+      if (visit.otp_verified) {
+        res.json({ success: true, verified: true, message: 'Officer identity already verified & equipment handed over.' });
+        return;
+      }
+
+      if (visit.otp_code !== otp.trim()) {
+        res.status(400).json({ error: 'Invalid verification token. Please ask the visiting officer for the 6-digit code shown on their official terminal.' });
+        return;
+      }
+
+      await query(
+        `UPDATE visits SET otp_verified = true, collected_at = NOW(), updated_at = NOW() WHERE id = $1`,
+        [visit.id]
+      );
+
+      await query(
+        `UPDATE verification_requests SET collected_at = NOW(), updated_at = NOW() WHERE id = $1`,
+        [req.params.id]
+      );
+
+      await logAction({
+        actorId: merchantId,
+        actorRole: 'merchant',
+        action: 'EQUIPMENT_HANDOVER_CONFIRMED',
+        entityType: 'verification_request',
+        entityId: req.params.id as string,
+        afterState: { visitId: visit.id, verifiedWithSubAdmin: visit.sub_admin_name },
+      });
+
+      // Notify sub-admin of successful handover confirmation
+      if (visit.sub_admin_id) {
+        await createNotification(
+          visit.sub_admin_id,
+          'sub_admin',
+          'general',
+          'Handover Confirmed by Merchant',
+          `Merchant confirmed identity and handed over equipment for request ${String(req.params.id).substring(0, 8)}.`,
+          'visit',
+          visit.id
+        );
+      }
+
+      res.json({
+        success: true,
+        verified: true,
+        message: `Officer ${visit.sub_admin_name || 'Verification Officer'} identity verified. Equipment handover recorded successfully for laboratory testing!`,
+      });
+    } catch (err) { next(err); }
+  }
+);
 
 // ─── Certificates ─────────────────────────────────────────────────────────────
 

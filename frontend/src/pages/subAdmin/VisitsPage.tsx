@@ -18,8 +18,8 @@ export default function VisitsPage() {
     try {
       const res = await api.get('/sub-admin/visits');
       setVisits(res.data.data || []);
-    } catch (err) {
-      toast.error('Failed to load visits');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || 'Failed to load visits');
     } finally {
       setLoading(false);
     }

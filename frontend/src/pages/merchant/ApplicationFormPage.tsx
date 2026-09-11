@@ -12,7 +12,9 @@ import {
   Calendar, 
   Upload, 
   ShieldCheck,
-  AlertCircle
+  AlertCircle,
+  CreditCard,
+  KeyRound
 } from 'lucide-react';
 
 export default function ApplicationFormPage() {
@@ -38,12 +40,18 @@ export default function ApplicationFormPage() {
     
     // Additional Details
     businessRegNumber: '',
-    preferredStartDate: '',
-    preferredEndDate: '',
     
     // Declaration
     declarationAccepted: false,
   });
+
+  const [scheduledInfo, setScheduledInfo] = useState<{
+    requestId: string;
+    scheduledDate?: string;
+    estimatedReturnDate?: string;
+    subAdminName?: string;
+    paymentReference?: string;
+  } | null>(null);
 
   useEffect(() => {
     fetchInstrumentTypes();
@@ -98,18 +106,15 @@ export default function ApplicationFormPage() {
           pin: formData.pin.trim(),
         },
         businessRegNumber: formData.businessRegNumber ? formData.businessRegNumber.trim() : undefined,
-        preferredInspectionStart: formData.preferredStartDate || new Date().toISOString().split('T')[0],
-        preferredInspectionEnd: formData.preferredEndDate || new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0],
-        preferredInspectionWindow: {
-          startDate: formData.preferredStartDate || new Date().toISOString().split('T')[0],
-          endDate: formData.preferredEndDate || new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0],
-        },
+        feeAmount: 500.00,
+        feePaid: true,
+        paymentReference: `TXN-${Date.now().toString(36).toUpperCase()}`,
         declarationAccepted: true,
       };
 
-      await api.post('/merchants/applications', payload);
-      toast.success('Verification application submitted successfully!');
-      navigate('/merchant/applications');
+      const res = await api.post('/merchants/applications', payload);
+      toast.success('Application submitted & pickup automatically scheduled!');
+      setScheduledInfo(res.data);
     } catch (err: any) {
       toast.error(err.response?.data?.error || 'Failed to submit application');
     } finally {
@@ -355,31 +360,13 @@ export default function ApplicationFormPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-                    Preferred Window Start Date
-                  </label>
-                  <input
-                    type="date"
-                    name="preferredStartDate"
-                    className="input py-2.5 px-3"
-                    value={formData.preferredStartDate}
-                    onChange={handleChange}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-                    Preferred Window End Date
-                  </label>
-                  <input
-                    type="date"
-                    name="preferredEndDate"
-                    className="input py-2.5 px-3"
-                    value={formData.preferredEndDate}
-                    onChange={handleChange}
-                  />
+              <div className="p-4 bg-blue-50/80 border border-blue-200 rounded-xl flex items-start gap-3 mt-4">
+                <Calendar className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                <div className="text-xs text-blue-900 leading-relaxed">
+                  <span className="font-bold">Automated Duty Scheduling:</span>
+                  <p className="mt-0.5">
+                    You do not need to manually choose dates. Upon verification fee confirmation, our automated regional metrology scheduler will immediately assign an available Field Verification Officer and set your collection slot.
+                  </p>
                 </div>
               </div>
 
@@ -402,19 +389,19 @@ export default function ApplicationFormPage() {
                   }}
                   className="btn-primary py-2.5 px-6 rounded-xl flex items-center gap-2"
                 >
-                  <span>Next: Review & Sign</span>
+                  <span>Next: Review & Fee Payment</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
             </div>
           )}
 
-          {/* STEP 3: Review & Legal Declaration */}
+          {/* STEP 3: Review, Statutory Fee & Payment */}
           {step === 3 && (
             <div className="space-y-5">
               <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
                 <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                Review & Statutory Declaration
+                Review & Statutory Verification Fee
               </h2>
 
               <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-2 text-slate-700">
@@ -429,13 +416,41 @@ export default function ApplicationFormPage() {
                 </div>
               </div>
 
+              {/* Statutory Fee Card */}
+              <div className="p-5 bg-gradient-to-br from-slate-900 to-blue-950 text-white rounded-2xl shadow-sm border border-slate-800 space-y-3">
+                <div className="flex items-center justify-between border-b border-blue-800/60 pb-3">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-blue-300">Statutory Metrology Portal</span>
+                    <h3 className="text-base font-bold text-white">Verification & Calibration Fee</h3>
+                  </div>
+                  <span className="text-2xl font-extrabold text-emerald-400 font-mono">₹500.00</span>
+                </div>
+                <div className="text-xs text-slate-300 space-y-1">
+                  <div className="flex justify-between">
+                    <span>Laboratory Standard Testing & Calibration</span>
+                    <span className="font-mono">₹500.00</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Government Metrology Cess & GST</span>
+                    <span className="font-mono">₹0.00</span>
+                  </div>
+                </div>
+                <div className="pt-2 border-t border-blue-800/60 flex items-center justify-between text-xs">
+                  <span className="text-slate-400">Payment Gateway:</span>
+                  <span className="text-emerald-300 font-semibold flex items-center gap-1.5">
+                    <CreditCard className="w-4 h-4 text-emerald-400" />
+                    Direct Metrology Gateway (Instant Clearance)
+                  </span>
+                </div>
+              </div>
+
               <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 leading-relaxed">
                 <div className="flex gap-2.5 items-start">
                   <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
                   <div>
                     <span className="font-bold">Legal Notice under Metrology Regulations:</span>
                     <p className="mt-1">
-                      By submitting this application, you declare that the instrument is installed at the designated address and will be made accessible to the regulatory inspector during scheduled hours. Any tampering with official inspection seals constitutes an offense.
+                      By submitting this application, you authorize the designated Field Verification Officer to collect the commercial instrument for facility testing. Upon collection, you must authenticate the officer using their 6-digit official token.
                     </p>
                   </div>
                 </div>
@@ -472,8 +487,8 @@ export default function ApplicationFormPage() {
                     <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                   ) : (
                     <>
-                      <CheckCircle2 className="w-4 h-4" />
-                      <span>Submit Application</span>
+                      <CreditCard className="w-4 h-4" />
+                      <span>Pay ₹500 & Submit Application</span>
                     </>
                   )}
                 </button>
@@ -482,6 +497,63 @@ export default function ApplicationFormPage() {
           )}
         </form>
       </div>
+
+      {/* Confirmation Modal once Scheduled */}
+      {scheduledInfo && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-slate-200 animate-in fade-in zoom-in duration-200 space-y-6">
+            <div className="text-center">
+              <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto mb-3 shadow-inner">
+                <CheckCircle2 className="w-8 h-8" />
+              </div>
+              <span className="text-xs font-bold uppercase tracking-widest text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">
+                Payment & Duty Confirmed
+              </span>
+              <h3 className="text-xl sm:text-2xl font-extrabold text-slate-900 mt-2">
+                Pickup Scheduled Automatically!
+              </h3>
+              <p className="text-xs text-slate-500 mt-1 font-mono">
+                Transaction ID: {scheduledInfo.paymentReference}
+              </p>
+            </div>
+
+            <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200 text-xs space-y-3">
+              <div className="flex justify-between items-center pb-2 border-b border-slate-200">
+                <span className="text-slate-500 font-medium">Assigned Officer:</span>
+                <span className="font-bold text-slate-900">{scheduledInfo.subAdminName || 'Field Verification Officer'}</span>
+              </div>
+              <div className="flex justify-between items-center pb-2 border-b border-slate-200">
+                <span className="text-slate-500 font-medium">Scheduled Machine Pickup:</span>
+                <span className="font-extrabold text-blue-700">{scheduledInfo.scheduledDate}</span>
+              </div>
+              <div className="flex justify-between items-center pb-2 border-b border-slate-200">
+                <span className="text-slate-500 font-medium">Expected Machine Return:</span>
+                <span className="font-extrabold text-emerald-700">{scheduledInfo.estimatedReturnDate}</span>
+              </div>
+            </div>
+
+            <div className="p-4 bg-indigo-50 border border-indigo-200 rounded-2xl text-xs text-indigo-950 flex items-start gap-3">
+              <KeyRound className="w-5 h-5 text-indigo-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <span className="font-bold">Anti-Impersonation Protocol:</span>
+                <p className="mt-0.5 text-indigo-900 leading-relaxed">
+                  When the officer arrives at your door on {scheduledInfo.scheduledDate}, ask for their official 6-digit Verification Token to confirm their credentials before handing over your machine.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => navigate(`/merchant/applications/${scheduledInfo.requestId}`)}
+                className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm shadow-md transition text-center"
+              >
+                Go to Application & Custody Tracking →
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

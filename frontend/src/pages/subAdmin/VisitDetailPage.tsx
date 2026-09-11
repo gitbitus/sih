@@ -172,7 +172,31 @@ export default function VisitDetailPage() {
           <div className="space-y-1.5 p-3 bg-slate-50 rounded-xl border border-slate-200">
             <div><span className="text-slate-400">Make & Model:</span> <span className="font-bold text-slate-900">{visit.make} {visit.model}</span></div>
             <div><span className="text-slate-400">Serial Number:</span> <span className="font-mono font-bold text-slate-900">{visit.serial_number}</span></div>
-            <div><span className="text-slate-400">Scheduled Date:</span> {formatDate(visit.scheduled_date)}</div>
+            <div><span className="text-slate-400">Scheduled Collection:</span> <span className="font-bold text-blue-700">{formatDate(visit.scheduled_date)}</span></div>
+            <div><span className="text-slate-400">Target Return Date:</span> <span className="font-bold text-emerald-700">{visit.return_date ? formatDate(visit.return_date) : 'Pending testing'}</span></div>
+          </div>
+        </div>
+      </div>
+
+      {/* OFFICER VERIFICATION TOKEN DISPLAY (Reverse OTP Handshake) */}
+      <div className="bg-gradient-to-r from-slate-900 to-blue-950 text-white rounded-2xl p-6 shadow-md border border-slate-800 flex flex-col sm:flex-row justify-between sm:items-center gap-5">
+        <div>
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-800/80 text-blue-200 text-xs font-semibold mb-2">
+            <KeyRound className="w-3.5 h-3.5" />
+            Official Field Verification Token
+          </div>
+          <h2 className="text-lg font-extrabold text-white">Your Official Handover Code</h2>
+          <p className="text-xs text-slate-300 mt-1 max-w-xl leading-relaxed">
+            State this 6-digit verification token to the merchant upon arrival. The merchant enters this code into their portal to authenticate your authority and confirm equipment handover for facility testing.
+          </p>
+        </div>
+        <div className="bg-white/10 backdrop-blur border border-white/20 px-6 py-3 rounded-2xl text-center flex-shrink-0">
+          <span className="text-[10px] uppercase font-bold tracking-widest text-blue-200 block">Officer Token</span>
+          <span className="font-mono text-3xl font-extrabold tracking-widest text-emerald-300">
+            {visit.otp_code || '------'}
+          </span>
+          <div className="text-[11px] mt-1 font-semibold text-slate-200">
+            {otpVerified ? '✓ Handover Confirmed' : 'Awaiting Merchant Handshake'}
           </div>
         </div>
       </div>
@@ -193,18 +217,18 @@ export default function VisitDetailPage() {
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-base font-bold text-slate-900">
-                  Step 1: Merchant Physical Verification (OTP Authentication)
+                  Step 1: Merchant Equipment Handover Status
                 </h2>
                 {otpVerified && (
                   <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-200 text-emerald-800">
-                    Verified
+                    Handover Confirmed
                   </span>
                 )}
               </div>
               <p className="text-xs text-slate-600 mt-1 max-w-xl">
                 {otpVerified 
-                  ? 'Merchant presence authenticated. You are authorized to carry out physical calibration tests and submit report.' 
-                  : 'Ask the merchant for the 6-digit verification OTP visible on their dashboard to unlock this inspection.'}
+                  ? 'Merchant authenticated your credentials and handed over the machine. You may now record laboratory measurements and submit findings.' 
+                  : 'If the merchant is unable to submit the code on their device, you can also confirm the handover code here.'}
               </p>
             </div>
           </div>
@@ -216,7 +240,7 @@ export default function VisitDetailPage() {
                 maxLength={6}
                 value={otp}
                 onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
-                placeholder="6-digit OTP"
+                placeholder="6-digit Token"
                 className="input font-mono font-bold text-base tracking-widest text-center py-2 px-3 w-36 bg-white border-blue-300 focus:ring-blue-500"
               />
               <button
@@ -225,13 +249,13 @@ export default function VisitDetailPage() {
                 disabled={verifyingOtp || otp.length !== 6}
                 className="btn-primary py-2 px-4 rounded-xl text-xs font-bold whitespace-nowrap shadow-sm disabled:opacity-50"
               >
-                {verifyingOtp ? 'Verifying...' : 'Verify OTP'}
+                {verifyingOtp ? 'Confirming...' : 'Confirm Handover'}
               </button>
             </div>
           ) : (
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 text-white font-bold text-xs shadow-sm">
               <CheckCircle2 className="w-4 h-4" />
-              <span>Identity Verified</span>
+              <span>Machine In Custody</span>
             </div>
           )}
         </div>

@@ -32,7 +32,7 @@ router.get('/visits', authenticate, requireRole('sub_admin'), requirePasswordCha
        JOIN merchants m ON m.id = r.merchant_id
        JOIN instrument_types it ON it.id = r.instrument_type_id
        WHERE v.sub_admin_id = $1
-         AND v.scheduled_date >= CURRENT_DATE
+         AND v.scheduled_date >= (CURRENT_DATE - INTERVAL '1 day')
          AND v.status = 'scheduled'
        ORDER BY v.scheduled_date ASC
        LIMIT 50`,
@@ -76,7 +76,8 @@ router.get('/visits/history', authenticate, requireRole('sub_admin'), requirePas
 router.get('/visits/:id', authenticate, requireRole('sub_admin'), requirePasswordChanged, async (req, res, next) => {
   try {
     const visit = await queryOne(
-      `SELECT v.id, v.request_id, v.sub_admin_id, v.admin_id, v.scheduled_date, v.status, v.otp_verified, v.notes, v.created_at, v.updated_at,
+      `SELECT v.id, v.request_id, v.sub_admin_id, v.admin_id, v.scheduled_date, v.return_date,
+              v.status, v.otp_code, v.otp_verified, v.collected_at, v.notes, v.created_at, v.updated_at,
               r.make, r.model, r.serial_number, r.year_of_manufacture, r.last_calibration_date,
               r.operating_address_street, r.operating_address_city, r.operating_address_state, r.operating_address_pin,
               m.business_name, m.owner_name, m.phone AS merchant_phone, m.email AS merchant_email,
@@ -131,14 +132,15 @@ router.post(
         return;
       }
 
-      await query(`UPDATE visits SET otp_verified = true, updated_at = NOW() WHERE id = $1`, [req.params.id]);
+      await query(`UPDATE visits SET otp_verified = true, collected_at = NOW(), updated_at = NOW() WHERE id = $1`, [req.params.id]);
+      await query(`UPDATE verification_requests SET collected_at = NOW(), updated_at = NOW() WHERE id = (SELECT request_id FROM visits WHERE id = $1)`, [req.params.id]);
 
       await logAction({
         actorId: subAdminId, actorRole: 'sub_admin',
         action: 'INSPECTION_OTP_VERIFIED', entityType: 'visit', entityId: req.params.id as string,
       });
 
-      res.json({ message: 'Merchant on-site identity verified successfully!', verified: true });
+      res.json({ message: 'Merchant on-site identity verified and instrument collected successfully!', verified: true });
     } catch (err) { next(err); }
   }
 );
